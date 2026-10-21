@@ -223,16 +223,11 @@ function setupPickers() {
         });
     });
 
-    document.getElementById('update-url')?.addEventListener('input', render);
 }
 
 function render() {
-    const urlRow = document.getElementById('update-url-row');
-    urlRow?.classList.toggle('hidden', !selected.has('forceinstall'));
-
     const target = BROWSER_TARGETS[currentBrowser];
-    const updateUrl = document.getElementById('update-url')?.value.trim() || '';
-    const policies = buildPolicies([...selected], EXTENSION_ID, updateUrl, target);
+    const policies = buildPolicies([...selected], EXTENSION_ID, '', target);
 
     const empty = document.getElementById('empty-note');
     const area = document.getElementById('command-area');

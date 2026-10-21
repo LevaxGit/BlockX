@@ -7,6 +7,8 @@
 // Everything here is a documented Chromium policy. Nothing is a trick, and
 // each entry says plainly what it does and what it costs.
 
+const BLOCKX_UPDATE_URL = 'https://raw.githubusercontent.com/CodesxTalha/BlockX/main/updates.xml';
+
 const HARDENING_OPTIONS = [
   {
     id: 'incognito',
@@ -94,9 +96,8 @@ const HARDENING_OPTIONS = [
   {
     id: 'forceinstall',
     label: 'Force-install BlockX so it cannot be removed',
-    detail: 'The strongest option, but it only works for an extension served from a web address (the Chrome Web Store or your own update manifest). '
-          + 'It cannot force-install the unpacked '
-          + 'folder you loaded by hand.',
+      detail: 'Uses BlockX\'s GitHub update feed and requires a published, correctly signed CRX release. '
+        + 'It cannot force-install the unpacked folder you loaded by hand.',
     advanced: true,
     needsExtensionId: true,
     extend(policies, extensionId, updateUrl) {
@@ -104,7 +105,7 @@ const HARDENING_OPTIONS = [
       policies.ExtensionSettings[extensionId] = {
         ...(policies.ExtensionSettings[extensionId] || {}),
         installation_mode: 'force_installed',
-        update_url: updateUrl || 'https://clients2.google.com/service/update2/crx'
+        update_url: updateUrl || BLOCKX_UPDATE_URL
       };
     }
   }
