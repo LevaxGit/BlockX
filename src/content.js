@@ -820,7 +820,7 @@
 
     const targetUrl = getBlockUrl(CONFIG.BLOCK_METHOD, targetUrlToBlock);
 
-    if (window.location.href.startsWith('data:') || window.location.href.includes('chrome-extension://')) return;
+    if (window.location.href.startsWith('data:') || window.location.href.includes('chrome-extension://') || window.location.href.includes('moz-extension://')) return;
 
     if (window.top === window.self) {
       chrome.runtime.sendMessage({ action: 'triggerBlock', url: targetUrlToBlock });
@@ -846,7 +846,7 @@
       targetUrl = window.location;
     }
 
-    if (targetUrl.protocol === 'chrome-extension:' || targetUrl.protocol === 'chrome:') return false;
+    if (targetUrl.protocol === 'chrome-extension:' || targetUrl.protocol === 'moz-extension:' || targetUrl.protocol === 'chrome:') return false;
 
     const host = String(targetUrl.hostname || '').toLowerCase().replace(/^www\./, '');
     if (!host) return false;

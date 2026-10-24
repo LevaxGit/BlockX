@@ -61,7 +61,8 @@ if (typeof settingsSyncStatus !== 'function') {
   });
 }
 
-const DYNAMIC_RULE_LIMIT = chrome.declarativeNetRequest.MAX_NUMBER_OF_DYNAMIC_AND_SESSION_RULES || 30000;
+const DYNAMIC_RULE_LIMIT = chrome.declarativeNetRequest.MAX_NUMBER_OF_DYNAMIC_AND_SESSION_RULES ||
+  chrome.declarativeNetRequest.MAX_NUMBER_OF_DYNAMIC_RULES || 5000;
 
 // ------------------------------------------------------------------
 // SAFESEARCH
@@ -901,7 +902,7 @@ function blockReason(urlStr, config, tabId) {
   if (!urlStr) return null;
   const urlLower = urlStr.toLowerCase();
 
-  if (urlLower.startsWith('chrome-extension://') || urlLower.startsWith('chrome://') || urlLower.startsWith('about:')) return null;
+  if (urlLower.startsWith('chrome-extension://') || urlLower.startsWith('moz-extension://') || urlLower.startsWith('chrome://') || urlLower.startsWith('about:')) return null;
 
   // A pass earned in the popup outranks every block below, but only in the one
   // tab it was granted for and only until that tab loads the page once.
@@ -1084,7 +1085,7 @@ chrome.webNavigation.onBeforeNavigate.addListener(async (details) => {
   if (details.frameId !== 0) return;
   const url = details.url;
 
-  if (url.startsWith('chrome-extension://') || url.startsWith('chrome://') || url.startsWith('about:') || url.startsWith('data:')) return;
+  if (url.startsWith('chrome-extension://') || url.startsWith('moz-extension://') || url.startsWith('chrome://') || url.startsWith('about:') || url.startsWith('data:')) return;
 
   await Promise.all([ensureDomainListLoaded(), ensureBadwordsLoaded()]);
   const config = await loadConfig();

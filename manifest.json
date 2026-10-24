@@ -3,7 +3,12 @@
   "browser_specific_settings": {
     "gecko": {
       "id": "blockx@local",
-      "strict_min_version": "121.0"
+      "strict_min_version": "128.0",
+      "data_collection_permissions": {
+        "required": [
+          "none"
+        ]
+      }
     }
   },
   "name": "BlockX",
@@ -19,7 +24,13 @@
     "nativeMessaging"
   ],
   "background": {
-    "service_worker": "src/background.js"
+    "service_worker": "src/background.js",
+    "scripts": [
+      "src/config.js",
+      "src/settings-sync.js",
+      "src/icon-helper.js",
+      "src/background.js"
+    ]
   },
   "host_permissions": [
     "<all_urls>"

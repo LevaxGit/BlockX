@@ -253,7 +253,7 @@ async function detectContext() {
     const protocol = url.protocol;
 
     // 1. Check for system pages (chrome://, about:, edge://, etc.)
-    const systemProtocols = ['chrome:', 'about:', 'edge:', 'brave:', 'view-source:', 'chrome-extension:'];
+    const systemProtocols = ['chrome:', 'about:', 'edge:', 'brave:', 'view-source:', 'chrome-extension:', 'moz-extension:'];
     if (systemProtocols.includes(protocol) || domain === 'chrome.google.com') {
         document.getElementById('context-action')?.classList.add('hidden');
         const displayName = document.getElementById('display-name');
