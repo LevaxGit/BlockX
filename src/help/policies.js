@@ -185,6 +185,15 @@ const BROWSER_TARGETS = {
 
 const POLICY_FILE_NAME = 'blockx.json';
 
+// Firefox identifies the add-on by the ID in browser_specific_settings.gecko.
+const GECKO_ID = (() => {
+  try {
+    return chrome.runtime.getManifest().browser_specific_settings.gecko.id;
+  } catch {
+    return 'blockx@local';
+  }
+})();
+
 /**
  * Merges the selected options into one policy object.
  */
@@ -200,26 +209,35 @@ function buildPolicies(selectedIds, extensionId, updateUrl, target) {
         policies.BlockAboutAddons = true;
         policies.BlockAboutConfig = true;
         policies.BlockAboutProfiles = true;
+        // Safe mode starts Firefox with every add-on switched off.
+        policies.DisableSafeMode = true;
       }
       if (id === 'otherextensions') {
         policies.ExtensionSettings = policies.ExtensionSettings || {};
         policies.ExtensionSettings['*'] = { installation_mode: 'blocked' };
-        policies.ExtensionSettings['blockx@local'] = { installation_mode: 'allowed' };
+        policies.ExtensionSettings[GECKO_ID] = { installation_mode: 'allowed' };
       }
       if (id === 'pin') {
         policies.ExtensionSettings = policies.ExtensionSettings || {};
-        policies.ExtensionSettings['blockx@local'] = {
-          ...(policies.ExtensionSettings['blockx@local'] || {}),
+        policies.ExtensionSettings[GECKO_ID] = {
+          ...(policies.ExtensionSettings[GECKO_ID] || {}),
           default_area: 'navbar'
         };
       }
       if (id === 'forceinstall') {
-        policies.ExtensionSettings = policies.ExtensionSettings || {};
-        policies.ExtensionSettings['blockx@local'] = {
-          ...(policies.ExtensionSettings['blockx@local'] || {}),
-          installation_mode: 'force_installed',
-          update_url: updateUrl || 'https://addons.mozilla.org/update.xml'
-        };
+        if (updateUrl) {
+          // Firefox force-installs from the address of a signed .xpi file.
+          policies.ExtensionSettings = policies.ExtensionSettings || {};
+          policies.ExtensionSettings[GECKO_ID] = {
+            ...(policies.ExtensionSettings[GECKO_ID] || {}),
+            installation_mode: 'force_installed',
+            install_url: updateUrl
+          };
+        } else {
+          // No .xpi address: lock the add-on in place so it cannot be
+          // disabled or removed once it is installed from a signed file.
+          policies.Extensions = { Locked: [GECKO_ID] };
+        }
       }
     }
     return policies;
