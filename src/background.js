@@ -197,8 +197,31 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   } else if (alarm.name === 'blockx-settings-poll') {
     ensureSafeSearchEnabled();
     reconcileSettings('poll');
+  } else if (alarm.name === SCHEDULE_TICK_ALARM) {
+    scheduleTick();
   }
 });
+
+// ------------------------------------------------------------------
+// SCHEDULES AND FOCUS TIMER
+// ------------------------------------------------------------------
+const SCHEDULE_TICK_ALARM = 'blockx-schedule-tick';
+let lastBlockingActive = null;
+
+// Rebuilding the rules is the expensive part, so it only happens when the
+// answer to "should blocking be on right now" actually changes.
+async function scheduleTick() {
+  try {
+    const config = await loadConfig();
+    const active = isBlockingActive(config);
+    if (active !== lastBlockingActive) {
+      lastBlockingActive = active;
+      await queueRuleUpdate();
+    }
+  } catch (err) {
+    console.warn('[BlockX] schedule check failed', err);
+  }
+}
 
 // ------------------------------------------------------------------
 // DNR RULES UPDATE
@@ -218,7 +241,8 @@ async function updateBlockingRules() {
     const oldRules = await chrome.declarativeNetRequest.getDynamicRules();
     const oldRuleIds = oldRules.map(rule => rule.id);
 
-    if (config.BLOCK_METHOD === 'none') {
+    // Outside a schedule window (and with no focus timer running) nothing is blocked.
+    if (config.BLOCK_METHOD === 'none' || !isBlockingActive(config)) {
       await chrome.declarativeNetRequest.updateDynamicRules({ removeRuleIds: oldRuleIds });
       return;
     }
@@ -488,7 +512,8 @@ chrome.storage.onChanged.addListener(async (changes, area) => {
   const shouldUpdate = [
     'CUSTOM_DOMAINS', 'CUSTOM_KEYWORDS', 'CUSTOM_PAGES',
     'CUSTOM_EXACT_PAGES', 'CUSTOM_ALLOWED_DOMAINS', 'BLOCK_METHOD', 'ACTIVE_GAME_INDEX',
-    'TEMP_GRANTS', 'REELS_BLOCKER_ENABLED', 'REELS_PLATFORMS', 'CUSTOM_REELS_PLATFORMS'
+    'TEMP_GRANTS', 'REELS_BLOCKER_ENABLED', 'REELS_PLATFORMS', 'CUSTOM_REELS_PLATFORMS',
+    'SCHEDULES', 'FOCUS_TIMER_END'
   ].some(key => changes[key] !== undefined);
 
   if (shouldUpdate) await queueRuleUpdate();
@@ -513,6 +538,8 @@ chrome.storage.sync.onChanged.addListener(() => {
 // The settings file can be changed by a profile that is not running right now,
 // so it is re-read periodically rather than only at startup.
 chrome.alarms.create('blockx-settings-poll', { periodInMinutes: 5 });
+chrome.alarms.create(SCHEDULE_TICK_ALARM, { periodInMinutes: 1 });
+scheduleTick();
 
 // Global browser shortcut listener (works on all pages, including browser home page)
 if (chrome.commands && chrome.commands.onCommand) {
@@ -903,6 +930,9 @@ function blockReason(urlStr, config, tabId) {
   const urlLower = urlStr.toLowerCase();
 
   if (urlLower.startsWith('chrome-extension://') || urlLower.startsWith('moz-extension://') || urlLower.startsWith('chrome://') || urlLower.startsWith('about:')) return null;
+
+  // Outside a schedule window, with no focus timer running, nothing is blocked.
+  if (!isBlockingActive(config)) return null;
 
   // A pass earned in the popup outranks every block below, but only in the one
   // tab it was granted for and only until that tab loads the page once.

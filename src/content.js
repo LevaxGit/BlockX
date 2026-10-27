@@ -771,7 +771,7 @@
   buildFilters([]);
   prepareFilter();
   applyReelsDistractionHiding();
-  if (CONFIG && CONFIG.SCANNING_ENABLED === false) {
+  if (CONFIG && (CONFIG.SCANNING_ENABLED === false || !isBlockingActive(CONFIG))) {
     dropBarrier();
   }
 
@@ -919,7 +919,7 @@
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area === 'local') {
       loadConfig().then(() => prepareFilter()).then(() => {
-        if (CONFIG && CONFIG.SCANNING_ENABLED === false) {
+        if (CONFIG && (CONFIG.SCANNING_ENABLED === false || !isBlockingActive(CONFIG))) {
           dismissScanPrompt();
           dropBarrier();
         } else if (isScanExcluded()) {

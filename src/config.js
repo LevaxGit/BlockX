@@ -56,6 +56,13 @@ var CONFIG = {
   // Temporary passes earned through the popup
   TEMP_GRANTS: [],
 
+  // Schedules: [{ id, name, enabled, days: [0-6, Sunday = 0], start: 'HH:MM', end: 'HH:MM' }].
+  // With no enabled schedule, blocking is always on (the original behaviour).
+  SCHEDULES: [],
+
+  // Epoch milliseconds until which a focus timer forces blocking on, 0 = no timer.
+  FOCUS_TIMER_END: 0,
+
   GAMES: [
     { name: "Tower Blocks", path: "assets/blocked-pages/tower-blocks.html" },
     { name: "Rubiks Cube", path: "assets/blocked-pages/rubiks-cube.html" },
@@ -270,6 +277,8 @@ async function loadConfig() {
       UNLOCK_PHRASE: CONFIG.UNLOCK_PHRASE,
       WEAKENING_MESSAGE: '',
       TEMP_GRANTS: [],
+      SCHEDULES: [],
+      FOCUS_TIMER_END: 0,
       THEME: 'system',
       COLOR_THEME: 'blue',
       ACTIVE_GAME_INDEX: -1,
@@ -299,6 +308,8 @@ async function loadConfig() {
       CONFIG.SCAN_SENSITIVITY = items.SCAN_SENSITIVITY;
       CONFIG.UNLOCK_PHRASE = items.UNLOCK_PHRASE;
       CONFIG.TEMP_GRANTS = items.TEMP_GRANTS;
+      CONFIG.SCHEDULES = Array.isArray(items.SCHEDULES) ? items.SCHEDULES : [];
+      CONFIG.FOCUS_TIMER_END = Number(items.FOCUS_TIMER_END) || 0;
       CONFIG.THEME = items.THEME;
       CONFIG.COLOR_THEME = items.COLOR_THEME || 'blue';
       CONFIG.ACTIVE_GAME_INDEX = items.ACTIVE_GAME_INDEX;
@@ -807,9 +818,57 @@ if (typeof globalThis !== 'undefined') {
   globalThis.getActiveReelsPatterns = getActiveReelsPatterns;
 }
 
+/**
+ * Minutes since midnight for an 'HH:MM' string, or null when it is not valid.
+ */
+function scheduleTimeToMinutes(value) {
+  const match = /^(\d{1,2}):(\d{2})$/.exec(String(value || '').trim());
+  if (!match) return null;
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (hours > 23 || minutes > 59) return null;
+  return hours * 60 + minutes;
+}
+
+/**
+ * Whether blocking should be enforced right now.
+ *  - No enabled schedules: always on, exactly as before schedules existed.
+ *  - A running focus timer forces blocking on.
+ *  - Otherwise blocking is on only inside an enabled schedule window.
+ * A window whose end is earlier than its start runs past midnight and belongs
+ * to the day it starts on. Start equal to end means the whole day.
+ */
+function isBlockingActive(config, now = new Date()) {
+  const schedules = (Array.isArray(config && config.SCHEDULES) ? config.SCHEDULES : [])
+    .filter(s => s && s.enabled !== false);
+  if (schedules.length === 0) return true;
+
+  if ((Number(config.FOCUS_TIMER_END) || 0) > now.getTime()) return true;
+
+  const day = now.getDay();
+  const previousDay = (day + 6) % 7;
+  const minutes = now.getHours() * 60 + now.getMinutes();
+
+  return schedules.some(schedule => {
+    const start = scheduleTimeToMinutes(schedule.start);
+    const end = scheduleTimeToMinutes(schedule.end);
+    if (start === null || end === null) return false;
+    const days = Array.isArray(schedule.days) && schedule.days.length
+      ? schedule.days
+      : [0, 1, 2, 3, 4, 5, 6];
+
+    if (start === end) return days.includes(day);
+    if (start < end) return days.includes(day) && minutes >= start && minutes < end;
+    return (days.includes(day) && minutes >= start) ||
+           (days.includes(previousDay) && minutes < end);
+  });
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     CONFIG,
+    isBlockingActive,
+    scheduleTimeToMinutes,
     BLOCK_STRATEGIES,
     getGameOrBlockPath,
     getGameOrBlockUrl,
