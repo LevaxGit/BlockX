@@ -38,6 +38,7 @@ async function init() {
     await detectContext();
     setupListeners();
     await setupUnlock();
+    setupFocus();
 }
 
 function applyTheme(theme) {
@@ -412,6 +413,126 @@ function saveQuickAdd() {
             }, 1800);
         }
     });
+}
+
+// ------------------------------------------------------------------
+// FOCUS TIMER
+// ------------------------------------------------------------------
+// The timer is one number in storage: FOCUS_TIMER_END, the moment it runs out.
+// The background script reads it to force blocking on, so this panel only
+// ever writes that number. It can be extended but never shortened.
+
+const FOCUS_MAX_MINUTES = 720;
+const FOCUS_EXTEND_MINUTES = 15;
+let focusTicker = null;
+
+function clampFocusMinutes(value) {
+    const minutes = Math.floor(Number(value));
+    if (!Number.isFinite(minutes) || minutes < 1) return 0;
+    return Math.min(minutes, FOCUS_MAX_MINUTES);
+}
+
+function formatRemaining(ms) {
+    const total = Math.max(0, Math.ceil(ms / 1000));
+    const hours = Math.floor(total / 3600);
+    const minutes = Math.floor((total % 3600) / 60);
+    const seconds = total % 60;
+    const pad = (n) => String(n).padStart(2, '0');
+    return hours > 0 ? `${hours}:${pad(minutes)}:${pad(seconds)}` : `${minutes}:${pad(seconds)}`;
+}
+
+async function getFocusEnd() {
+    const { FOCUS_TIMER_END } = await chrome.storage.local.get({ FOCUS_TIMER_END: 0 });
+    return Number(FOCUS_TIMER_END) || 0;
+}
+
+async function startFocus(rawMinutes) {
+    const minutes = clampFocusMinutes(rawMinutes);
+    if (!minutes) return;
+    const now = Date.now();
+    const current = await getFocusEnd();
+    const end = Math.max(current > now ? current : 0, now + minutes * 60000);
+    await chrome.storage.local.set({ FOCUS_TIMER_END: end });
+    await renderFocus();
+}
+
+async function extendFocus() {
+    const now = Date.now();
+    const current = await getFocusEnd();
+    if (current <= now) return;
+    const cap = now + FOCUS_MAX_MINUTES * 60000;
+    const end = Math.min(current + FOCUS_EXTEND_MINUTES * 60000, cap);
+    await chrome.storage.local.set({ FOCUS_TIMER_END: end });
+    await renderFocus();
+}
+
+async function renderFocus() {
+    const idle = document.getElementById('focus-idle');
+    const active = document.getElementById('focus-active');
+    const remaining = document.getElementById('focus-remaining');
+    const note = document.getElementById('focus-note');
+    if (!idle || !active || !remaining) return;
+
+    if (focusTicker) {
+        clearInterval(focusTicker);
+        focusTicker = null;
+    }
+
+    const end = await getFocusEnd();
+    if (end - Date.now() > 0) {
+        idle.classList.add('hidden');
+        active.classList.remove('hidden');
+        remaining.textContent = `${formatRemaining(end - Date.now())} left`;
+        focusTicker = setInterval(() => {
+            const left = end - Date.now();
+            if (left <= 0) {
+                renderFocus();
+            } else {
+                remaining.textContent = `${formatRemaining(left)} left`;
+            }
+        }, 1000);
+        return;
+    }
+
+    active.classList.add('hidden');
+    idle.classList.remove('hidden');
+
+    // With no schedule, blocking is already on all the time and a timer adds nothing.
+    if (note) {
+        const { SCHEDULES } = await chrome.storage.local.get({ SCHEDULES: [] });
+        const hasSchedule = Array.isArray(SCHEDULES) && SCHEDULES.some(s => s && s.enabled !== false);
+        note.textContent = hasSchedule
+            ? 'Forces blocking on, even outside your schedules.'
+            : 'Blocking is already always on. A timer only matters once you add schedules.';
+    }
+}
+
+function setupFocus() {
+    document.querySelectorAll('.focus-preset').forEach((button) => {
+        button.addEventListener('click', () => startFocus(button.dataset.minutes));
+    });
+
+    const custom = document.getElementById('focus-custom');
+    const startBtn = document.getElementById('focus-start-btn');
+    const startCustom = () => {
+        startFocus(custom ? custom.value : 0);
+        if (custom) custom.value = '';
+    };
+    if (startBtn) startBtn.addEventListener('click', startCustom);
+    if (custom) {
+        custom.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') startCustom();
+        });
+    }
+
+    const extendBtn = document.getElementById('focus-extend-btn');
+    if (extendBtn) extendBtn.addEventListener('click', extendFocus);
+
+    chrome.storage.onChanged.addListener((changes, area) => {
+        if (area === 'local' && (changes.FOCUS_TIMER_END || changes.SCHEDULES)) renderFocus();
+    });
+
+    renderFocus();
 }
 
 document.addEventListener('DOMContentLoaded', init);

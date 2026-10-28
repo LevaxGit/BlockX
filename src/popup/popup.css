@@ -612,6 +612,82 @@ body:not([data-user-theme="light"]) .status-pill {
     margin: 0;
 }
 
+/* Focus timer */
+.focus-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-card);
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+#focus-idle,
+#focus-active {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.focus-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.focus-title {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+}
+
+.focus-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--accent);
+}
+
+.focus-presets {
+    display: flex;
+    gap: 7px;
+}
+
+.focus-preset {
+    flex: 1;
+    padding: 0 6px;
+}
+
+#focus-custom {
+    flex: 1;
+    min-width: 0;
+    height: 34px;
+    padding: 0 11px;
+    font-family: inherit;
+    font-size: 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-btn);
+    background: var(--bg-input);
+    color: var(--text-primary);
+    outline: none;
+}
+
+#focus-custom:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+.focus-remaining {
+    margin: 0;
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--text-primary);
+    font-variant-numeric: tabular-nums;
+}
+
 /* Utility */
 .hidden {
     display: none !important;

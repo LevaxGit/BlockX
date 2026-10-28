@@ -90,6 +90,14 @@
                     </svg>
                     <span>Reels</span>
                 </a>
+                <a href="#" class="nav-link" data-section="schedules">
+                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="10" />
+                        <polyline points="12 6 12 12 16 14" />
+                    </svg>
+                    <span>Schedules</span>
+                </a>
             </nav>
 
             <div class="sidebar-help">
@@ -931,6 +939,41 @@
                             </label>
                         </div>
                     </div>
+                </div>
+
+                <!-- Schedules Section -->
+                <div id="section-schedules" class="settings-section">
+                    <div class="settings-group">
+                        <p class="whitelist-hint"><strong>How it works:</strong> With no schedules, blocking is always
+                            on. Once you add one, blocking is on only during your schedules and off the rest of the
+                            time. A focus timer started from the popup forces blocking on, even outside a schedule.</p>
+                        <p id="schedule-status" class="schedule-status"></p>
+
+                        <div class="schedule-form">
+                            <div class="input-row">
+                                <input type="text" id="schedule-name" maxlength="40"
+                                    placeholder="Name (e.g. Work hours)">
+                            </div>
+                            <div id="schedule-days" class="day-chips" role="group" aria-label="Days of the week">
+                                <button type="button" class="day-chip active" data-day="1" aria-pressed="true">Mon</button>
+                                <button type="button" class="day-chip active" data-day="2" aria-pressed="true">Tue</button>
+                                <button type="button" class="day-chip active" data-day="3" aria-pressed="true">Wed</button>
+                                <button type="button" class="day-chip active" data-day="4" aria-pressed="true">Thu</button>
+                                <button type="button" class="day-chip active" data-day="5" aria-pressed="true">Fri</button>
+                                <button type="button" class="day-chip" data-day="6" aria-pressed="false">Sat</button>
+                                <button type="button" class="day-chip" data-day="0" aria-pressed="false">Sun</button>
+                            </div>
+                            <div class="schedule-times">
+                                <label>From <input type="time" id="schedule-start" value="09:00"></label>
+                                <label>To <input type="time" id="schedule-end" value="17:00"></label>
+                            </div>
+                            <p class="help-text">If the end is earlier than the start, the schedule runs past midnight
+                                into the next day. The same start and end means the whole day.</p>
+                            <p id="schedule-error" class="schedule-error hidden"></p>
+                            <button type="button" id="schedule-add-btn" class="btn btn-primary">Add schedule</button>
+                        </div>
+                    </div>
+                    <div id="schedule-list" class="reels-list"></div>
                 </div>
 
                 <!-- Settings Section -->

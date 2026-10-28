@@ -7,6 +7,7 @@ const sections = {
     keywords: { title: "Blocked Keywords", subtitle: "Block URLs, search queries, and keystrokes matching specific terms." },
     scanning: { title: "Content Scanning", subtitle: "Catch explicit pages on unlisted sites using on-page text inspection." },
     reels: { title: "Reels Blocker", subtitle: "Block short-form video feeds and all their child pages across social platforms." },
+    schedules: { title: "Schedules", subtitle: "Choose when blocking is on. Outside your schedules it is off." },
     settings: { title: "Settings", subtitle: "Manage cross-device sync, configuration backups, and dashboard security." },
     help: { title: "Help & Setup", subtitle: "Setting up shared settings, and locking the browser down so this cannot be walked around." }
 };
@@ -108,6 +109,7 @@ async function init() {
     setupShortcutSetting();
     setupScanSettings();
     setupReelsManager();
+    setupSchedules();
     setupWeakeningSettings();
     setupImportOath();
     setupSyncStatus();
@@ -748,6 +750,9 @@ const LIST_LABELS = {
 };
 
 function describeWeakeningAction(staged) {
+    if (staged.type === 'schedules') {
+        return `${staged.summary} This reduces the time blocking is on.`;
+    }
     if (staged.type === 'switch_mode') {
         const modeLabel = staged.targetMode === 'retype' ? 'Retype Phrase' : 'Warning Message';
         return `You are switching your verification mode to ${modeLabel}.`;
@@ -767,6 +772,7 @@ function describeWeakeningAction(staged) {
 
 function getConfirmButtonLabel(staged) {
     if (!staged) return 'Yes, apply change';
+    if (staged.type === 'schedules') return 'Yes, reduce blocking time';
     if (staged.type === 'switch_mode') {
         const target = staged.targetMode === 'retype' ? 'Retype Phrase' : 'Warning Message';
         return `Yes, switch to ${target}`;
@@ -871,10 +877,17 @@ function hideWeakeningModal() {
         const toggle = document.getElementById('content-scanning-toggle');
         if (toggle) toggle.checked = true;
     }
+    if (stagedWeakening && stagedWeakening.type === 'schedules') {
+        renderSchedules(); // put any switch back the way it was
+    }
     stagedWeakening = null;
 }
 
 function applyWeakeningChange(staged) {
+    if (staged.type === 'schedules') {
+        commitSchedules(staged.next);
+        return;
+    }
     if (staged.type === 'switch_mode') {
         state.BYPASS_MODE = staged.targetMode;
         saveState();
@@ -944,6 +957,234 @@ function setupWeakeningModal() {
             showToast('Nothing changed: protection stays as it was.');
         }
     });
+}
+
+// ------------------------------------------------------------------
+// SCHEDULES
+// ------------------------------------------------------------------
+// Schedules decide WHEN blocking is on (see isBlockingActive in config.js).
+// They are stored on their own under SCHEDULES. Any change that reduces the
+// time blocking is on goes through the same weakening confirmation as the
+// other settings; changes that add blocking time apply straight away.
+
+const MAX_SCHEDULES = 20;
+const WEEK_MINUTES = 7 * 1440;
+const SCHEDULE_DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const SCHEDULE_DAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
+
+let schedulesState = [];
+let focusTimerEnd = 0;
+
+/**
+ * Minutes per week during which blocking is on for a set of schedules.
+ * With no enabled schedule blocking is always on, so that is the whole week.
+ */
+function scheduleCoverage(schedules) {
+    const enabled = (Array.isArray(schedules) ? schedules : []).filter(s => s && s.enabled !== false);
+    if (enabled.length === 0) return WEEK_MINUTES;
+
+    const covered = new Uint8Array(WEEK_MINUTES);
+    const fill = (from, to) => { for (let m = from; m < to; m++) covered[m % WEEK_MINUTES] = 1; };
+
+    for (const schedule of enabled) {
+        const start = scheduleTimeToMinutes(schedule.start);
+        const end = scheduleTimeToMinutes(schedule.end);
+        if (start === null || end === null) continue;
+        const days = Array.isArray(schedule.days) && schedule.days.length ? schedule.days : [0, 1, 2, 3, 4, 5, 6];
+        for (const day of days) {
+            const base = day * 1440;
+            if (start === end) fill(base, base + 1440);
+            else if (start < end) fill(base + start, base + end);
+            else fill(base + start, base + 1440 + end);
+        }
+    }
+
+    let total = 0;
+    for (let m = 0; m < WEEK_MINUTES; m++) total += covered[m];
+    return total;
+}
+
+function describeScheduleDays(days) {
+    const set = new Set(days);
+    if (set.size === 7) return 'Every day';
+    const key = SCHEDULE_DAY_ORDER.filter(d => set.has(d)).join(',');
+    if (key === '1,2,3,4,5') return 'Mon to Fri';
+    if (key === '6,0') return 'Weekends';
+    return SCHEDULE_DAY_ORDER.filter(d => set.has(d)).map(d => SCHEDULE_DAY_NAMES[d]).join(', ');
+}
+
+function describeSchedule(schedule) {
+    const start = scheduleTimeToMinutes(schedule.start);
+    const end = scheduleTimeToMinutes(schedule.end);
+    let times = `${schedule.start} to ${schedule.end}`;
+    if (start !== null && end !== null) {
+        if (start === end) times = 'All day';
+        else if (start > end) times += ' (runs past midnight)';
+    }
+    return `${describeScheduleDays(schedule.days || [])} · ${times}`;
+}
+
+function newScheduleId() {
+    return 's' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+}
+
+function requestScheduleChange(next, summary) {
+    if (scheduleCoverage(next) < scheduleCoverage(schedulesState)) {
+        promptWeakeningWarning({ type: 'schedules', next, summary });
+    } else {
+        commitSchedules(next);
+    }
+}
+
+function commitSchedules(next) {
+    schedulesState = next;
+    chrome.storage.local.set({ SCHEDULES: next }, () => {
+        if (!chrome.runtime.lastError) showToast('Schedules saved.');
+    });
+    renderSchedules();
+}
+
+function renderScheduleStatus() {
+    const el = document.getElementById('schedule-status');
+    if (!el) return;
+    const on = typeof isBlockingActive === 'function'
+        ? isBlockingActive({ SCHEDULES: schedulesState, FOCUS_TIMER_END: focusTimerEnd })
+        : true;
+    const hasSchedule = schedulesState.some(s => s && s.enabled !== false);
+    el.classList.toggle('is-on', on);
+    if (!hasSchedule) el.textContent = 'Blocking is on all the time (no schedules yet).';
+    else if (focusTimerEnd > Date.now()) el.textContent = 'Blocking is on right now: a focus timer is running.';
+    else el.textContent = on ? 'Blocking is on right now.' : 'Blocking is off right now (outside your schedules).';
+}
+
+function renderSchedules() {
+    const list = document.getElementById('schedule-list');
+    if (!list) return;
+    list.textContent = '';
+
+    if (schedulesState.length === 0) {
+        const empty = document.createElement('p');
+        empty.className = 'schedule-empty';
+        empty.textContent = 'No schedules yet. Add one above to limit when blocking is on.';
+        list.appendChild(empty);
+        renderScheduleStatus();
+        return;
+    }
+
+    for (const schedule of schedulesState) {
+        const row = document.createElement('div');
+        row.className = 'reels-row';
+
+        const left = document.createElement('div');
+        left.className = 'reels-row-left';
+        const info = document.createElement('div');
+        info.className = 'reels-row-info';
+        const name = document.createElement('span');
+        name.className = 'reels-platform-name';
+        name.textContent = schedule.name || 'Schedule';
+        const desc = document.createElement('span');
+        desc.className = 'reels-platform-desc';
+        desc.textContent = describeSchedule(schedule);
+        info.append(name, desc);
+        left.appendChild(info);
+
+        const actions = document.createElement('div');
+        actions.className = 'schedule-row-actions';
+
+        const toggle = document.createElement('label');
+        toggle.className = 'scan-toggle-switch';
+        toggle.title = 'Turn this schedule on or off';
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.checked = schedule.enabled !== false;
+        const slider = document.createElement('span');
+        slider.className = 'scan-toggle-slider';
+        toggle.append(checkbox, slider);
+        checkbox.addEventListener('change', () => {
+            const next = schedulesState.map(s => s.id === schedule.id ? { ...s, enabled: checkbox.checked } : s);
+            requestScheduleChange(next, `You are turning off the schedule "${schedule.name || 'Schedule'}".`);
+        });
+
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.className = 'btn btn-secondary btn-sm';
+        remove.textContent = 'Delete';
+        remove.addEventListener('click', () => {
+            const next = schedulesState.filter(s => s.id !== schedule.id);
+            requestScheduleChange(next, `You are deleting the schedule "${schedule.name || 'Schedule'}".`);
+        });
+
+        actions.append(toggle, remove);
+        row.append(left, actions);
+        list.appendChild(row);
+    }
+    renderScheduleStatus();
+}
+
+function showScheduleError(message) {
+    const el = document.getElementById('schedule-error');
+    if (!el) return;
+    el.textContent = message;
+    el.classList.toggle('hidden', !message);
+}
+
+function addScheduleFromForm() {
+    const nameInput = document.getElementById('schedule-name');
+    const startInput = document.getElementById('schedule-start');
+    const endInput = document.getElementById('schedule-end');
+
+    const days = [...document.querySelectorAll('#schedule-days .day-chip.active')]
+        .map(chip => Number(chip.dataset.day));
+    const start = startInput ? startInput.value : '';
+    const end = endInput ? endInput.value : '';
+
+    if (days.length === 0) return showScheduleError('Pick at least one day.');
+    if (scheduleTimeToMinutes(start) === null || scheduleTimeToMinutes(end) === null) {
+        return showScheduleError('Set both a start and an end time.');
+    }
+    if (schedulesState.length >= MAX_SCHEDULES) {
+        return showScheduleError(`You can have up to ${MAX_SCHEDULES} schedules.`);
+    }
+    showScheduleError('');
+
+    const name = (nameInput && nameInput.value.trim()) || `Schedule ${schedulesState.length + 1}`;
+    const schedule = { id: newScheduleId(), name, enabled: true, days, start, end };
+    requestScheduleChange(
+        [...schedulesState, schedule],
+        `You are adding the schedule "${name}". Blocking will only be on during your schedules from now on.`
+    );
+    if (nameInput) nameInput.value = '';
+}
+
+async function setupSchedules() {
+    const stored = await chrome.storage.local.get({ SCHEDULES: [], FOCUS_TIMER_END: 0 });
+    schedulesState = Array.isArray(stored.SCHEDULES) ? stored.SCHEDULES : [];
+    focusTimerEnd = Number(stored.FOCUS_TIMER_END) || 0;
+    renderSchedules();
+
+    document.querySelectorAll('#schedule-days .day-chip').forEach((chip) => {
+        chip.addEventListener('click', () => {
+            const active = chip.classList.toggle('active');
+            chip.setAttribute('aria-pressed', active ? 'true' : 'false');
+        });
+    });
+
+    const addBtn = document.getElementById('schedule-add-btn');
+    if (addBtn) addBtn.addEventListener('click', addScheduleFromForm);
+
+    chrome.storage.onChanged.addListener((changes, area) => {
+        if (area !== 'local') return;
+        if (changes.SCHEDULES) {
+            schedulesState = Array.isArray(changes.SCHEDULES.newValue) ? changes.SCHEDULES.newValue : [];
+            renderSchedules();
+        }
+        if (changes.FOCUS_TIMER_END) {
+            focusTimerEnd = Number(changes.FOCUS_TIMER_END.newValue) || 0;
+            renderScheduleStatus();
+        }
+    });
+
+    setInterval(renderScheduleStatus, 30000);
 }
 
 function setupWeakeningSettings() {

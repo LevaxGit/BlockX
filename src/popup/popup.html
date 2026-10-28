@@ -136,6 +136,35 @@
                     <button id="quick-save-btn" class="btn btn-primary" title="Add to blocklist">Add</button>
                 </div>
             </div>
+
+            <!-- Focus timer -->
+            <div id="focus-card" class="focus-card">
+                <div id="focus-idle">
+                    <div class="focus-head">
+                        <span class="focus-title">Focus timer</span>
+                    </div>
+                    <div class="focus-presets">
+                        <button type="button" class="btn btn-secondary focus-preset" data-minutes="25">25 min</button>
+                        <button type="button" class="btn btn-secondary focus-preset" data-minutes="45">45 min</button>
+                        <button type="button" class="btn btn-secondary focus-preset" data-minutes="60">1 hour</button>
+                    </div>
+                    <div class="input-group">
+                        <input type="number" id="focus-custom" min="1" max="720" step="1" inputmode="numeric" placeholder="Custom minutes">
+                        <button type="button" id="focus-start-btn" class="btn btn-primary">Start</button>
+                    </div>
+                    <p id="focus-note" class="help-text"></p>
+                </div>
+
+                <div id="focus-active" class="hidden">
+                    <div class="focus-head">
+                        <span class="focus-dot"></span>
+                        <span class="focus-title">Focus active</span>
+                    </div>
+                    <p id="focus-remaining" class="focus-remaining"></p>
+                    <button type="button" id="focus-extend-btn" class="btn btn-ghost">Add 15 minutes</button>
+                    <p class="help-text">Blocking stays on until the timer ends. It cannot be cut short.</p>
+                </div>
+            </div>
         </main>
     </div>
 
