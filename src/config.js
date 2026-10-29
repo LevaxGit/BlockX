@@ -758,6 +758,12 @@ function getGameOrBlockUrl(cfg = CONFIG) {
   return chrome.runtime.getURL(getGameOrBlockPath(cfg));
 }
 
+// Firefox refuses redirects to data: addresses, and one refused rule makes the
+// whole rule update fail. There "Discreet Null" lands on an empty page that
+// ships with the extension instead.
+const BLANK_PAGE_PATH = 'assets/blocked-pages/empty.html';
+const IS_GECKO = typeof navigator !== 'undefined' && /Firefox\//.test(navigator.userAgent || '');
+
 const BLOCK_STRATEGIES = {
   infinite_hang: {
     requiresRegex: false,
@@ -765,15 +771,18 @@ const BLOCK_STRATEGIES = {
     getDNRAction: () => ({ type: 'redirect', redirect: { url: 'http://1.1.1.1:81' } })
   },
   data_uri: {
-    requiresRegex: true,
+    requiresRegex: !IS_GECKO,
     getRedirectUrl: (urlOrHost) => {
+      if (IS_GECKO) return chrome.runtime.getURL(BLANK_PAGE_PATH);
       const target = (urlOrHost || '').trim();
       if (!target) return 'data:Blocked';
       if (target.startsWith('data:')) return target;
       if (/^https?:\/\//i.test(target)) return 'data:' + target;
       return 'data:https://' + target;
     },
-    getDNRAction: () => ({ type: 'redirect', redirect: { regexSubstitution: 'data:\\0' } })
+    getDNRAction: () => IS_GECKO
+      ? { type: 'redirect', redirect: { extensionPath: '/' + BLANK_PAGE_PATH } }
+      : { type: 'redirect', redirect: { regexSubstitution: 'data:\\0' } }
   },
   custom_url: {
     requiresRegex: false,

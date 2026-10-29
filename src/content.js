@@ -799,6 +799,9 @@
 
   function blockPage(url) {
     if (isBlocked) return;
+    // Outside a schedule window, with no focus timer running, nothing is blocked.
+    // Every in-page block (listed sites, keywords, scans, reels) ends up here.
+    if (CONFIG && !isBlockingActive(CONFIG)) return;
     isBlocked = true;
 
     try { window.stop(); } catch { }
