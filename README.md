@@ -9,11 +9,19 @@
 [![Version](https://img.shields.io/badge/version-2.2.0-1900FF?style=flat-square)](#)
 [![Manifest V3](https://img.shields.io/badge/Manifest-V3-1900FF?style=flat-square)](https://developer.chrome.com/docs/extensions/mv3/intro/)
 [![Chromium](https://img.shields.io/badge/Chrome%20·%20Brave%20·%20Edge%20·%20Vivaldi-supported-1900FF?style=flat-square)](#installation)
+[![Firefox](https://img.shields.io/badge/Firefox-128%2B-1900FF?style=flat-square)](#installation)
 [![License](https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-1900FF?style=flat-square)](LICENSE)
 
 <img src="assets/screenshots/dashboard.png" width="820" alt="BlockX v2.2 Dashboard">
 
 </div>
+
+---
+
+> **This is a fork of [BlockX](https://github.com/CodesxTalha/BlockX) by Talha Khalid**, with the changes
+> listed under [Changes in this fork](#changes-in-this-fork). The original design, code, and assets belong to the
+> original author and stay under the original license. See [CREDITS.md](CREDITS.md).
+> This fork was made with AI assistance: see [AI.md](AI.md) for details.
 
 ---
 
@@ -52,6 +60,15 @@
 - **Password Protection & Backup**  
   Secure your settings with a dashboard password, with quick JSON backup export and import.
 
+- **Schedules** *(added in this fork)*  
+  Choose the days and hours when blocking is on. Outside your schedules blocking is off, and schedules can run past midnight.
+
+- **Focus Timer** *(added in this fork)*  
+  Start a 25, 45, or 60 minute (or custom) timer from the toolbar popup to force blocking on, even outside a schedule. It can be extended but not cut short.
+
+- **Firefox Support** *(added in this fork)*  
+  Runs in Firefox 128 or newer as well as Chromium browsers, including a Firefox version of the lockdown policy generator.
+
 ---
 
 ## Installation
@@ -61,7 +78,45 @@
 3. Enable **Developer mode** using the toggle in the top right.
 4. Click **Load unpacked** and select the BlockX directory.
 
+**Firefox (128 or newer)**
+
+1. Open `about:debugging#/runtime/this-firefox`.
+2. Click **Load Temporary Add-on** and select `manifest.json` in the BlockX directory.
+3. Open `about:addons`, select BlockX, and under Permissions allow access to your data for all websites.
+
+Temporary add-ons are removed when Firefox closes. Release Firefox only keeps extensions that are signed, so a permanent install needs a signed `.xpi` file.
+
 The dashboard opens automatically upon installation.
+
+---
+
+## Changes in this fork
+
+These changes were tested by hand in Firefox and Vivaldi. See [AI.md](AI.md) for how AI assistance was used.
+
+**Firefox support**
+
+- The manifest declares a background `scripts` entry next to the service worker, a minimum Firefox version of 128, and that no data is collected.
+- `moz-extension://` pages are exempt from blocking, the same way `chrome-extension://` pages already were.
+- The dynamic rule limit falls back to the value Firefox supports.
+- Firefox rejects redirects to `data:` addresses, which made the Discreet Null style fail and left old rules in place. In Firefox, Discreet Null now redirects to an empty page (`assets/blocked-pages/empty.html`). Chromium behavior is unchanged.
+- The lockdown policy generator for Firefox now force-installs with `install_url` or locks an installed add-on with `Extensions.Locked`, and blocks safe mode when the extensions page is blocked.
+
+**Schedules**
+
+- New Schedules tab in the dashboard with days, start and end times, and an on/off switch for each schedule. With no schedules, blocking stays on all the time, as in the original.
+- Blocking follows schedules in the background rules, the navigation checks, and the on-page script.
+- Changes that reduce blocking time, such as adding the first schedule, deleting one, or switching one off, go through the existing bypass confirmation.
+
+**Focus timer**
+
+- New card in the toolbar popup. A running timer forces blocking on and can be extended but never shortened.
+
+**Known limitations**
+
+- Schedules are not yet included in settings backup, import, or sync.
+- The Reels and Shorts check in the background script does not follow schedules yet.
+- A page that is already open keeps its blocked or unblocked state until it is reloaded.
 
 ---
 
@@ -125,3 +180,5 @@ Switch between calming accent themes and manage cross-device synchronization.
 ## License
 
 [PolyForm Noncommercial License 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0) (see [LICENSE](LICENSE)). Free for personal, noncommercial use.
+
+This fork keeps the original license and the required copyright notice for Talha Khalid. The original project is at [CodesxTalha/BlockX](https://github.com/CodesxTalha/BlockX).
