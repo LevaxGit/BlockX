@@ -168,6 +168,24 @@ Blocks explicit content in real time behind a overlay and requires your intentio
 
 <br>
 
+### Schedules
+Choose the days and hours when blocking is on. Outside your schedules blocking is off, and a schedule can run past midnight.
+
+<div align="center">
+<img src="assets/screenshots/schedules.png" width="820" alt="BlockX Schedules tab with a Mon to Fri work hours schedule">
+</div>
+
+<br>
+
+### Focus Timer
+Start a timer from the toolbar popup to force blocking on, even outside a schedule. It can be extended but not cut short.
+
+<div align="center">
+<img src="assets/screenshots/focus-timer.png" width="327" alt="BlockX popup with the Focus timer card">
+</div>
+
+<br>
+
 ### Theme Palettes & Sync Settings
 Switch between calming accent themes and manage cross-device synchronization.
 
