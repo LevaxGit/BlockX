@@ -35,6 +35,18 @@ if (typeof updateDynamicActionIcon === 'undefined') {
   }
 }
 
+if (typeof insightsAddTime === 'undefined') {
+  try {
+    importScripts('insights.js');
+  } catch (e1) {
+    try {
+      importScripts('/src/insights.js');
+    } catch (e2) {
+      console.warn('[BlockX] Insights helper not available:', e2);
+    }
+  }
+}
+
 async function syncDynamicActionIcon() {
   if (typeof updateDynamicActionIcon !== 'function') return;
   try {
@@ -1176,3 +1188,124 @@ async function expireGrants() {
     chrome.alarms.create(TEMP_GRANT_ALARM, { when: Math.min(...live.map(g => g.expiresAt)) + 500 });
   }
 }
+
+// ------------------------------------------------------------------
+// INSIGHTS (opt-in, stays on this device)
+// ------------------------------------------------------------------
+// Off unless INSIGHTS_ENABLED is true. Records only the site (host name) and
+// how long it was in front of you, per day: no pages, no titles, no searches.
+// Private windows are never recorded, and neither is time while you are idle
+// or the browser is not the focused window.
+
+const INSIGHTS_TICK_ALARM = 'blockx-insights-tick';
+let insightsChain = Promise.resolve();
+
+// One piece of work at a time, so two events can never overwrite each other.
+function queueInsightsWork(task) {
+  insightsChain = insightsChain
+    .then(task)
+    .catch((err) => console.warn('[BlockX] insights', err));
+  return insightsChain;
+}
+
+async function insightsSettings() {
+  const stored = await chrome.storage.local.get({
+    INSIGHTS_ENABLED: false,
+    INSIGHTS_RETENTION_DAYS: INSIGHTS_DEFAULT_RETENTION_DAYS
+  });
+  const days = Math.floor(Number(stored.INSIGHTS_RETENTION_DAYS));
+  return {
+    enabled: stored.INSIGHTS_ENABLED === true,
+    retentionDays: days >= 1 ? days : INSIGHTS_DEFAULT_RETENTION_DAYS
+  };
+}
+
+async function loadInsights() {
+  const { INSIGHTS } = await chrome.storage.local.get({ INSIGHTS: null });
+  return INSIGHTS && INSIGHTS.days ? INSIGHTS : emptyInsights();
+}
+
+// The site being looked at right now, or null when nothing should be counted.
+async function currentViewedSite() {
+  let win;
+  try {
+    win = await chrome.windows.getLastFocused({ populate: true });
+  } catch {
+    return null;
+  }
+  if (!win || !win.focused || win.incognito) return null;
+  const tab = (win.tabs || []).find((t) => t.active);
+  if (!tab || tab.incognito) return null;
+
+  // Watching or listening counts even without keyboard or mouse input.
+  const idleState = await chrome.idle.queryState(60);
+  if (idleState !== 'active' && !tab.audible) return null;
+
+  return insightsDomainFromUrl(tab.url);
+}
+
+async function insightsCheckpoint() {
+  const settings = await insightsSettings();
+  if (!settings.enabled) {
+    await chrome.storage.session.remove('INSIGHTS_TRACKER');
+    return;
+  }
+
+  const now = Date.now();
+  const { INSIGHTS_TRACKER } = await chrome.storage.session.get({ INSIGHTS_TRACKER: null });
+  const current = await currentViewedSite();
+  const { tracker, credit } = advanceTracker(INSIGHTS_TRACKER, current, now);
+  await chrome.storage.session.set({ INSIGHTS_TRACKER: tracker });
+
+  if (credit) {
+    const insights = await loadInsights();
+    const today = insightsDayKey(new Date(now));
+    insightsAddTime(insights, today, credit.domain, credit.ms);
+    insightsPrune(insights, today, settings.retentionDays);
+    await chrome.storage.local.set({ INSIGHTS: insights });
+  }
+}
+
+async function insightsRecordVisit(details) {
+  const settings = await insightsSettings();
+  if (!settings.enabled) return;
+  const domain = insightsDomainFromUrl(details.url);
+  if (!domain) return;
+
+  let tab;
+  try {
+    tab = await chrome.tabs.get(details.tabId);
+  } catch {
+    return;
+  }
+  if (!tab || tab.incognito) return;
+
+  const insights = await loadInsights();
+  insightsAddVisit(insights, insightsDayKey(new Date()), domain);
+  await chrome.storage.local.set({ INSIGHTS: insights });
+}
+
+try {
+  chrome.idle.setDetectionInterval(60);
+} catch (err) {
+  console.warn('[BlockX] insights: idle detection unavailable', err);
+}
+chrome.alarms.create(INSIGHTS_TICK_ALARM, { periodInMinutes: 1 });
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === INSIGHTS_TICK_ALARM) queueInsightsWork(insightsCheckpoint);
+});
+chrome.tabs.onActivated.addListener(() => queueInsightsWork(insightsCheckpoint));
+chrome.windows.onFocusChanged.addListener(() => queueInsightsWork(insightsCheckpoint));
+chrome.idle.onStateChanged.addListener(() => queueInsightsWork(insightsCheckpoint));
+chrome.webNavigation.onCommitted.addListener((details) => {
+  if (details.frameId !== 0) return;
+  queueInsightsWork(insightsCheckpoint);
+  if (details.transitionType !== 'reload') {
+    queueInsightsWork(() => insightsRecordVisit(details));
+  }
+});
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && changes.INSIGHTS_ENABLED) queueInsightsWork(insightsCheckpoint);
+});
+queueInsightsWork(insightsCheckpoint);
