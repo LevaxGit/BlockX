@@ -595,8 +595,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (sender.frameId === 0) {
       loadConfig().then(async (config) => {
         const blockUrl = request.url || sender.tab.url;
-        await rememberBlocked(sender.tab.id, blockUrl,
-          blockReason(blockUrl, config, sender.tab.id) || 'reels');
+        const why = blockReason(blockUrl, config, sender.tab.id);
+        await rememberBlocked(sender.tab.id, blockUrl, why || 'reels');
+        queueInsightsWork(() => insightsRecordBlock(sender.tab.id, blockUrl, why || 'content'));
         const targetUrl = getBlockUrl(config.BLOCK_METHOD, blockUrl);
         chrome.tabs.update(sender.tab.id, { url: targetUrl });
         sendResponse({ ok: true });
@@ -1137,6 +1138,7 @@ chrome.webNavigation.onBeforeNavigate.addListener(async (details) => {
   if (reason) {
     console.log(`[BlockX] Blocked via onBeforeNavigate (${reason}): ${url}`);
     await rememberBlocked(details.tabId, url, reason);
+    queueInsightsWork(() => insightsRecordBlock(details.tabId, url, reason));
     try {
       chrome.tabs.update(details.tabId, { url: getBlockUrl(config.BLOCK_METHOD, url) });
     } catch {
@@ -1282,6 +1284,38 @@ async function insightsRecordVisit(details) {
 
   const insights = await loadInsights();
   insightsAddVisit(insights, insightsDayKey(new Date()), domain);
+  await chrome.storage.local.set({ INSIGHTS: insights });
+}
+
+// A blocked attempt is counted once, however many places notice it.
+const INSIGHTS_BLOCK_DEDUPE_MS = 5000;
+const insightsRecentBlocks = new Map();
+
+async function insightsRecordBlock(tabId, url, reason) {
+  const settings = await insightsSettings();
+  if (!settings.enabled) return;
+  const domain = insightsDomainFromUrl(url);
+  if (!domain) return;
+
+  const now = Date.now();
+  const key = `${tabId}|${domain}`;
+  const last = insightsRecentBlocks.get(key);
+  if (last && now - last < INSIGHTS_BLOCK_DEDUPE_MS) return;
+  insightsRecentBlocks.set(key, now);
+  for (const [k, at] of insightsRecentBlocks) {
+    if (now - at > 60000) insightsRecentBlocks.delete(k);
+  }
+
+  let tab;
+  try {
+    tab = await chrome.tabs.get(tabId);
+  } catch {
+    return;
+  }
+  if (!tab || tab.incognito) return;
+
+  const insights = await loadInsights();
+  insightsAddBlock(insights, insightsDayKey(new Date(now)), domain, reason);
   await chrome.storage.local.set({ INSIGHTS: insights });
 }
 
